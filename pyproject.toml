@@ -1,0 +1,26 @@
+[build-system]
+requires = ["setuptools>=65.0.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "wordlearn"
+version = "0.1.0"
+description = "A vocabulary-focused reading passage and question generator for IELTS and CET practice."
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "MIT" }
+authors = [
+  { name = "Your Name" }
+]
+dependencies = [
+  "fastapi>=0.115.0",
+  "openai>=2.32.0",
+  "openpyxl>=3.1.5",
+  "pandas>=2.2.0",
+  "uvicorn>=0.30.0",
+  "httpx>=0.28.0"
+]
+
+[project.urls]
+Homepage = "https://github.com/yourname/wordlearn"
+Repository = "https://github.com/yourname/wordlearn"

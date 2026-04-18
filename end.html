@@ -1,0 +1,668 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Reading Practice</title>
+<style>
+  :root {
+    --bg: #f6f1e8;
+    --panel: #fffdf8;
+    --line: #dccfb8;
+    --text: #231f18;
+    --muted: #6c6355;
+    --accent: #b65b3f;
+    --accent-soft: #f5e1d7;
+    --success: #e6f4ea;
+    --warning: #fff2df;
+    --shadow: 0 18px 36px rgba(74, 58, 35, 0.12);
+  }
+
+  * {
+    box-sizing: border-box;
+  }
+
+  body {
+    margin: 0;
+    font-family: "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+    background:
+      radial-gradient(circle at top left, #fce8da 0, transparent 28%),
+      linear-gradient(180deg, #f8f3ea 0%, #efe5d7 100%);
+    color: var(--text);
+  }
+
+  .page {
+    max-width: 1400px;
+    margin: 0 auto;
+    padding: 28px 20px 40px;
+  }
+
+  .hero {
+    margin-bottom: 22px;
+    padding: 24px 28px;
+    border: 1px solid var(--line);
+    border-radius: 24px;
+    background: rgba(255, 253, 248, 0.92);
+    box-shadow: var(--shadow);
+  }
+
+  .eyebrow {
+    margin: 0 0 10px;
+    color: var(--accent);
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+  }
+
+  h1 {
+    margin: 0 0 10px;
+    font-size: clamp(28px, 4vw, 46px);
+    line-height: 1.1;
+  }
+
+  .subtitle {
+    margin: 0;
+    max-width: 760px;
+    color: var(--muted);
+    font-size: 15px;
+  }
+
+  .toolbar {
+    display: flex;
+    gap: 12px;
+    align-items: center;
+    margin-top: 18px;
+    flex-wrap: wrap;
+  }
+
+  .toolbar label {
+    font-size: 14px;
+    font-weight: 600;
+  }
+
+  select,
+  button {
+    border-radius: 12px;
+    border: 1px solid #ccb99a;
+    font-size: 14px;
+  }
+
+  select {
+    padding: 10px 12px;
+    background: #fffefa;
+    color: var(--text);
+  }
+
+  button {
+    padding: 10px 14px;
+    cursor: pointer;
+    font-weight: 700;
+  }
+
+  .primary-btn {
+    border: none;
+    background: linear-gradient(135deg, #c86647 0%, #a44d35 100%);
+    color: #fff;
+  }
+
+  .secondary-btn {
+    background: #f8ecdf;
+    color: #7d3f2a;
+  }
+
+  .layout {
+    display: grid;
+    grid-template-columns: minmax(0, 1.2fr) minmax(360px, 0.9fr);
+    gap: 22px;
+    align-items: start;
+  }
+
+  .panel {
+    border: 1px solid var(--line);
+    border-radius: 24px;
+    background: var(--panel);
+    box-shadow: var(--shadow);
+  }
+
+  .article-panel,
+  .question-panel {
+    padding: 24px;
+  }
+
+  .article-panel.compact-reading .panel-title {
+    margin-bottom: 10px;
+  }
+
+  .panel-title {
+    margin: 0 0 16px;
+    font-size: 24px;
+  }
+
+  .status-box {
+    margin-bottom: 18px;
+    padding: 12px 14px;
+    border-radius: 14px;
+    background: #f8f2e8;
+    color: var(--muted);
+    font-size: 14px;
+  }
+
+  .status-box.success {
+    background: var(--success);
+    color: #245537;
+  }
+
+  .status-box.warning {
+    background: var(--warning);
+    color: #875123;
+  }
+
+  .paragraph {
+    margin-bottom: 16px;
+    padding: 18px;
+    border: 1px solid var(--line);
+    border-radius: 18px;
+    background: #fff;
+  }
+
+  .paragraph:last-child {
+    margin-bottom: 0;
+  }
+
+  .paragraph-tag {
+    display: inline-block;
+    margin-bottom: 10px;
+    padding: 4px 10px;
+    border-radius: 999px;
+    background: #f0e5d4;
+    color: #6d5735;
+    font-size: 13px;
+    font-weight: 700;
+  }
+
+  .paragraph p {
+    margin: 0;
+    white-space: pre-wrap;
+  }
+
+  .article-panel.compact-reading .paragraph {
+    margin-bottom: 14px;
+    padding: 0;
+    border: none;
+    border-radius: 0;
+    background: transparent;
+  }
+
+  .article-panel.compact-reading .paragraph-tag {
+    display: none;
+  }
+
+  .article-panel.compact-reading .paragraph p {
+    font-size: 17px;
+    line-height: 1.85;
+  }
+
+  .question-card {
+    margin-bottom: 18px;
+    padding: 18px;
+    border: 1px solid var(--line);
+    border-radius: 18px;
+    background: #fff;
+  }
+
+  .question-card:last-child {
+    margin-bottom: 0;
+  }
+
+  .question-card h3 {
+    margin: 0 0 12px;
+    font-size: 18px;
+    line-height: 1.5;
+  }
+
+  .question-section {
+    margin-bottom: 20px;
+  }
+
+  .question-section:last-child {
+    margin-bottom: 0;
+  }
+
+  .question-section-title {
+    margin: 0 0 12px;
+    font-size: 20px;
+  }
+
+  .option-list {
+    display: grid;
+    gap: 10px;
+  }
+
+  .option-item {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    padding: 12px 14px;
+    border: 1px solid #dac9ae;
+    border-radius: 14px;
+    background: #fcf8f1;
+  }
+
+  .option-item input {
+    margin-top: 4px;
+  }
+
+  .option-label {
+    font-weight: 700;
+    color: #6d5735;
+  }
+
+  .question-actions {
+    display: flex;
+    gap: 12px;
+    margin-top: 20px;
+  }
+
+  .answer-summary {
+    margin-top: 16px;
+    padding: 12px 14px;
+    border-radius: 14px;
+    background: #f7f2e8;
+    color: #5c5142;
+    font-size: 14px;
+  }
+
+  .empty {
+    color: var(--muted);
+    font-size: 15px;
+  }
+
+  .completion-input {
+    width: 100%;
+    margin-top: 10px;
+    padding: 10px 12px;
+    border: 1px solid #ccb99a;
+    border-radius: 12px;
+    font-size: 14px;
+    background: #fffefa;
+  }
+
+  @media (max-width: 980px) {
+    .layout {
+      grid-template-columns: 1fr;
+    }
+  }
+</style>
+</head>
+<body>
+  <div class="page">
+    <header class="hero">
+      <p class="eyebrow">Dynamic Reading Practice</p>
+      <h1 id="page-title">Loading passage...</h1>
+      <p class="subtitle">
+        This page reads structured JSON from the backend and renders the full article together with multiple-choice questions.
+      </p>
+
+      <div class="toolbar">
+        <label for="exam-select">Exam Type</label>
+        <select id="exam-select">
+          <option value="CET4">CET4</option>
+          <option value="CET6">CET6</option>
+          <option value="IELTS">IELTS</option>
+        </select>
+        <label for="question-type-select">Question Type</label>
+        <select id="question-type-select">
+          <option value="careful_reading">Careful Reading</option>
+          <option value="banked_cloze">Banked Cloze</option>
+          <option value="paragraph_matching">Paragraph Matching</option>
+          <option value="tfng">True / False / Not Given</option>
+        </select>
+        <button class="primary-btn" type="button" id="reload-btn">Generate New Set</button>
+      </div>
+    </header>
+
+    <div class="layout">
+      <section class="panel article-panel">
+        <h2 class="panel-title">Article</h2>
+        <div class="status-box" id="article-status">Waiting for content...</div>
+        <div id="paragraphs-container">
+          <p class="empty">No article loaded yet.</p>
+        </div>
+      </section>
+
+      <aside class="panel question-panel">
+        <h2 class="panel-title">Questions</h2>
+        <div class="status-box" id="question-status">Waiting for content...</div>
+
+        <form id="question-form">
+          <div id="questions-container">
+            <p class="empty">No questions loaded yet.</p>
+          </div>
+
+          <div class="question-actions">
+            <button class="primary-btn" type="button" id="check-btn">Check Completion</button>
+            <button class="secondary-btn" type="reset">Reset Answers</button>
+          </div>
+
+          <div class="answer-summary" id="answer-summary">
+            Load a question set first, then answer the MCQ on the right.
+          </div>
+        </form>
+      </aside>
+    </div>
+  </div>
+
+  <script>
+    const pageTitle = document.getElementById("page-title");
+    const examSelect = document.getElementById("exam-select");
+    const questionTypeSelect = document.getElementById("question-type-select");
+    const reloadButton = document.getElementById("reload-btn");
+    const articleStatus = document.getElementById("article-status");
+    const questionStatus = document.getElementById("question-status");
+    const articlePanel = document.querySelector(".article-panel");
+    const paragraphsContainer = document.getElementById("paragraphs-container");
+    const questionsContainer = document.getElementById("questions-container");
+    const questionForm = document.getElementById("question-form");
+    const checkButton = document.getElementById("check-btn");
+    const answerSummary = document.getElementById("answer-summary");
+
+    function setStatus(element, text, mode = "") {
+      element.textContent = text;
+      element.classList.remove("success", "warning");
+      if (mode) {
+        element.classList.add(mode);
+      }
+    }
+
+    function escapeHtml(text) {
+      return String(text)
+        .replaceAll("&", "&amp;")
+        .replaceAll("<", "&lt;")
+        .replaceAll(">", "&gt;")
+        .replaceAll("\"", "&quot;")
+        .replaceAll("'", "&#39;");
+    }
+
+    function renderParagraphs(paragraphs, exam) {
+      if (!Array.isArray(paragraphs) || paragraphs.length === 0) {
+        paragraphsContainer.innerHTML = '<p class="empty">No paragraph data returned.</p>';
+        return;
+      }
+
+      const showParagraphTags = questionTypeSelect.value === "paragraph_matching";
+      articlePanel.classList.toggle("compact-reading", !showParagraphTags);
+
+      paragraphsContainer.innerHTML = paragraphs.map((paragraph, index) => {
+        const label = String.fromCharCode(65 + index);
+        return `
+          <article class="paragraph">
+            ${showParagraphTags ? `<span class="paragraph-tag">Paragraph ${label}</span>` : ""}
+            <p>${escapeHtml(paragraph)}</p>
+          </article>
+        `;
+      }).join("");
+    }
+
+    function renderCarefulReadingSection(items) {
+      if (!Array.isArray(items) || items.length === 0) {
+        return "";
+      }
+
+      return `
+        <section class="question-section">
+          <h3 class="question-section-title">Multiple Choice</h3>
+          ${items.map((item, index) => {
+            const name = `mcq-${index + 1}`;
+            const optionKeys = ["A", "B", "C", "D"];
+
+            return `
+              <section class="question-card">
+                <h3>${index + 1}. ${escapeHtml(item.question)}</h3>
+                <div class="option-list">
+                  ${optionKeys.map((key) => `
+                    <label class="option-item">
+                      <input type="radio" name="${name}" value="${key}">
+                      <span>
+                        <span class="option-label">${key}.</span>
+                        ${escapeHtml(item.options[key] || "")}
+                      </span>
+                    </label>
+                  `).join("")}
+                </div>
+              </section>
+            `;
+          }).join("")}
+        </section>
+      `;
+    }
+
+    function renderTfngSection(tfng) {
+      if (!Array.isArray(tfng) || tfng.length === 0) {
+        return "";
+      }
+
+      return `
+        <section class="question-section">
+          <h3 class="question-section-title">True / False / Not Given</h3>
+          ${tfng.map((item, index) => {
+            const name = `tfng-${index + 1}`;
+            const options = ["True", "False", "Not Given"];
+
+            return `
+              <section class="question-card">
+                <h3>${index + 1}. ${escapeHtml(item.statement)}</h3>
+                <div class="option-list">
+                  ${options.map((key) => `
+                    <label class="option-item">
+                      <input type="radio" name="${name}" value="${key}">
+                      <span>${escapeHtml(key)}</span>
+                    </label>
+                  `).join("")}
+                </div>
+              </section>
+            `;
+          }).join("")}
+        </section>
+      `;
+    }
+
+    function renderBankedClozeSection(data) {
+      if (!data || !Array.isArray(data.items) || data.items.length === 0) {
+        return "";
+      }
+
+      return `
+        <section class="question-section">
+          <h3 class="question-section-title">Banked Cloze</h3>
+          <section class="question-card">
+            <h3>${escapeHtml(data.instruction || "Choose the correct word from the word bank.")}</h3>
+            <div class="option-list">
+              ${(Array.isArray(data.word_bank) ? data.word_bank : []).map((word) => `
+                <div class="option-item"><span>${escapeHtml(word)}</span></div>
+              `).join("")}
+            </div>
+          </section>
+          ${data.items.map((item, index) => `
+            <section class="question-card">
+              <h3>${index + 1}. ${escapeHtml(item.prompt)}</h3>
+              <input
+                class="completion-input"
+                type="text"
+                name="completion-${index + 1}"
+                placeholder="Type your answer"
+              >
+            </section>
+          `).join("")}
+        </section>
+      `;
+    }
+
+    function renderParagraphMatchingSection(data) {
+      if (!data) {
+        return "";
+      }
+
+      const headings = Array.isArray(data.headings) ? data.headings : [];
+      const items = Array.isArray(data.items) ? data.items : [];
+      if (headings.length === 0 || items.length === 0) {
+        return "";
+      }
+
+      return `
+        <section class="question-section">
+          <h3 class="question-section-title">Paragraph Matching</h3>
+          <section class="question-card">
+            <h3>${escapeHtml(data.instruction || "Match each paragraph with the best heading.")}</h3>
+            <div class="option-list">
+              ${headings.map((item) => `
+                <div class="option-item">
+                  <span>
+                    <span class="option-label">${escapeHtml(item.key)}.</span>
+                    ${escapeHtml(item.text)}
+                  </span>
+                </div>
+              `).join("")}
+            </div>
+          </section>
+          ${items.map((item, index) => `
+            <section class="question-card">
+              <h3>${index + 1}. Paragraph ${escapeHtml(item.paragraph)}</h3>
+              <input
+                class="completion-input"
+                type="text"
+                name="matching-${index + 1}"
+                placeholder="Type heading key, for example i"
+              >
+            </section>
+          `).join("")}
+        </section>
+      `;
+    }
+
+    function renderQuestions(questions) {
+      const questionType = questions?.question_type;
+
+      if (questionType === "careful_reading") {
+        questionsContainer.innerHTML = renderCarefulReadingSection(questions.careful_reading) || '<p class="empty">No careful reading data returned.</p>';
+        return;
+      }
+      if (questionType === "tfng") {
+        questionsContainer.innerHTML = renderTfngSection(questions.tfng) || '<p class="empty">No TFNG data returned.</p>';
+        return;
+      }
+      if (questionType === "banked_cloze") {
+        questionsContainer.innerHTML = renderBankedClozeSection(questions.banked_cloze) || '<p class="empty">No banked cloze data returned.</p>';
+        return;
+      }
+      if (questionType === "paragraph_matching") {
+        questionsContainer.innerHTML = renderParagraphMatchingSection(questions.paragraph_matching) || '<p class="empty">No paragraph matching data returned.</p>';
+        return;
+      }
+
+      questionsContainer.innerHTML = '<p class="empty">No question data returned.</p>';
+    }
+
+    async function loadContent() {
+      const exam = examSelect.value;
+      const questionType = questionTypeSelect.value;
+      pageTitle.textContent = "Loading passage...";
+      paragraphsContainer.innerHTML = '<p class="empty">Loading article...</p>';
+      questionsContainer.innerHTML = '<p class="empty">Loading questions...</p>';
+      answerSummary.textContent = "Loading a new question set...";
+      setStatus(articleStatus, `Loading article for ${exam}...`);
+      setStatus(questionStatus, `Loading ${questionType} for ${exam}...`);
+
+      try {
+        const res = await fetch(
+          `/generate?exam=${encodeURIComponent(exam)}&question_type=${encodeURIComponent(questionType)}`
+        );
+        if (!res.ok) {
+          const text = await res.text();
+          throw new Error(text || `HTTP ${res.status}`);
+        }
+
+        const data = await res.json();
+        pageTitle.textContent = data.title || "Untitled Passage";
+        renderParagraphs(data.paragraphs, exam);
+        renderQuestions(data.questions);
+        questionForm.reset();
+
+        const articleCount = Array.isArray(data.paragraphs) ? data.paragraphs.length : 0;
+        const resolvedType = data.questions?.question_type || questionType;
+        let questionCount = 0;
+        if (resolvedType === "careful_reading") questionCount = Array.isArray(data.questions?.careful_reading) ? data.questions.careful_reading.length : 0;
+        if (resolvedType === "tfng") questionCount = Array.isArray(data.questions?.tfng) ? data.questions.tfng.length : 0;
+        if (resolvedType === "banked_cloze") questionCount = Array.isArray(data.questions?.banked_cloze?.items) ? data.questions.banked_cloze.items.length : 0;
+        if (resolvedType === "paragraph_matching") questionCount = Array.isArray(data.questions?.paragraph_matching?.items) ? data.questions.paragraph_matching.items.length : 0;
+        const isFallback = data.source === "fallback";
+
+        setStatus(
+          articleStatus,
+          isFallback
+            ? `Loaded ${articleCount} paragraph(s) from fallback content.`
+            : `Loaded ${articleCount} paragraph(s).`,
+          isFallback ? "warning" : "success"
+        );
+        setStatus(
+          questionStatus,
+          isFallback
+            ? `Loaded ${questionCount} ${resolvedType} item(s) from fallback content.`
+            : `Loaded ${questionCount} ${resolvedType} item(s).`,
+          isFallback ? "warning" : "success"
+        );
+        answerSummary.textContent = data.message
+          || "Content loaded successfully. You can now answer the MCQ on the right.";
+      } catch (error) {
+        pageTitle.textContent = "Failed to load content";
+        paragraphsContainer.innerHTML = '<p class="empty">The article could not be loaded.</p>';
+        questionsContainer.innerHTML = '<p class="empty">The questions could not be loaded.</p>';
+        setStatus(articleStatus, `Load failed: ${error.message}`, "warning");
+        setStatus(questionStatus, `Load failed: ${error.message}`, "warning");
+        answerSummary.textContent = "The backend returned an error, so no dynamic content was rendered.";
+      }
+    }
+
+    checkButton.addEventListener("click", () => {
+      const fields = Array.from(
+        questionsContainer.querySelectorAll("input[type='radio'], input[type='text']")
+      );
+      if (fields.length === 0) {
+        answerSummary.textContent = "There are no questions to check yet.";
+        return;
+      }
+
+      const radioGroups = Array.from(
+        new Set(
+          Array.from(questionsContainer.querySelectorAll("input[type='radio']")).map((input) => input.name)
+        )
+      );
+      const unansweredRadios = radioGroups.filter((name) => {
+        return !questionForm.querySelector(`input[name="${name}"]:checked`);
+      });
+      const unansweredText = Array.from(
+        questionsContainer.querySelectorAll("input[type='text']")
+      ).filter((input) => !input.value.trim());
+      const unansweredCount = unansweredRadios.length + unansweredText.length;
+
+      if (unansweredCount === 0) {
+        answerSummary.textContent = "All questions have been answered.";
+        return;
+      }
+
+      answerSummary.textContent = `${unansweredCount} question(s) are still unanswered.`;
+    });
+
+    reloadButton.addEventListener("click", loadContent);
+    examSelect.addEventListener("change", () => {
+      if (examSelect.value === "CET4" || examSelect.value === "CET6") {
+        const allowed = new Set(["careful_reading", "banked_cloze", "paragraph_matching"]);
+        if (!allowed.has(questionTypeSelect.value)) {
+          questionTypeSelect.value = "careful_reading";
+        }
+      }
+    });
+    loadContent();
+  </script>
+</body>
+</html>
