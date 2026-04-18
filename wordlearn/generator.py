@@ -9,6 +9,17 @@ from openai import OpenAI
 OPENAI_DEFAULT_MODEL = "gpt-4o-mini"
 MOONSHOT_DEFAULT_MODEL = "kimi-k2.5"
 MOONSHOT_BASE_URL = "https://api.moonshot.cn/v1"
+OLLAMA_DEFAULT_BASE_URL = "http://127.0.0.1:11434/v1"
+
+
+def resolve_provider() -> str:
+    provider = os.environ.get("WORDLEARN_PROVIDER", "auto").strip().lower()
+    allowed = {"auto", "openai", "moonshot", "ollama"}
+    if provider not in allowed:
+        raise RuntimeError(
+            "WORDLEARN_PROVIDER must be one of: auto, openai, moonshot, ollama."
+        )
+    return provider
 
 
 def normalize_exam_type(exam_type: str) -> str:
@@ -40,12 +51,34 @@ def describe_exam_type(exam_type: str) -> str:
     )
 
 
+def get_passage_requirements(exam_type: str) -> dict[str, int]:
+    normalized = normalize_exam_type(exam_type)
+
+    if normalized == "CET4":
+        return {
+            "min_words": 220,
+            "max_words": 320,
+            "min_paragraphs": 3,
+            "max_paragraphs": 4,
+        }
+    if normalized == "CET6":
+        return {
+            "min_words": 320,
+            "max_words": 480,
+            "min_paragraphs": 5,
+            "max_paragraphs": 6,
+        }
+
+    return {
+        "min_words": 650,
+        "max_words": 850,
+        "min_paragraphs": 9,
+        "max_paragraphs": 11,
+    }
+
+
 def load_env_file(env_path: str = ".env") -> None:
-    if (
-        os.environ.get("OPENAI_API_KEY")
-        or os.environ.get("MOONSHOT_API_KEY")
-        or not os.path.exists(env_path)
-    ):
+    if not os.path.exists(env_path):
         return
 
     with open(env_path, "r", encoding="utf-8") as env_file:
@@ -64,24 +97,27 @@ def load_env_file(env_path: str = ".env") -> None:
 
 def build_prompt(words: List[str], exam_type: str) -> str:
     word_list = ", ".join(words)
-    exam_description = describe_exam_type(exam_type)
+    normalized_exam_type = normalize_exam_type(exam_type)
+    exam_description = describe_exam_type(normalized_exam_type)
+    requirements = get_passage_requirements(normalized_exam_type)
 
     return f"""
 You are an English exam passage generator.
 
 Task:
-Generate a reading comprehension passage suitable for {exam_type} students.
+Generate a reading comprehension passage suitable for {normalized_exam_type} students.
 
 Requirements:
 - You MUST naturally use ALL the following words in the passage.
 - Words: {word_list}
-- Length: 200-250 words
+- Length: {requirements["min_words"]}-{requirements["max_words"]} words
 - Style: similar to IELTS / CET reading
 - Keep coherence and logical flow.
-- Exam target: {exam_type}
+- Exam target: {normalized_exam_type}
 - Exam guidance: {exam_description}
 - Generate a short title for the passage.
-- Split the passage into 2 to 4 paragraphs.
+- Paragraph count: {requirements["min_paragraphs"]}-{requirements["max_paragraphs"]} paragraphs.
+- For IELTS, use shorter academic paragraphs like a real reading passage, not 3 long blocks.
 
 Output ONLY valid JSON in this format:
 {{
@@ -91,12 +127,56 @@ Output ONLY valid JSON in this format:
 """.strip()
 
 
+def validate_passage_payload(passage: dict[str, object], exam_type: str) -> dict[str, object]:
+    requirements = get_passage_requirements(exam_type)
+    title = passage.get("title")
+    paragraphs = passage.get("paragraphs")
+
+    if not isinstance(title, str) or not title.strip():
+        raise RuntimeError("The model returned an invalid passage title.")
+    if not isinstance(paragraphs, list) or not paragraphs or not all(
+        isinstance(paragraph, str) and paragraph.strip() for paragraph in paragraphs
+    ):
+        raise RuntimeError("The model returned invalid passage paragraphs.")
+    if not requirements["min_paragraphs"] <= len(paragraphs) <= requirements["max_paragraphs"]:
+        raise RuntimeError(
+            "The model returned the wrong number of paragraphs "
+            f"for {normalize_exam_type(exam_type)}."
+        )
+
+    return {
+        "title": title.strip(),
+        "paragraphs": [paragraph.strip() for paragraph in paragraphs],
+    }
+
+
 def build_client_and_model(model: str | None) -> tuple[OpenAI, str, float]:
+    load_env_file()
+    provider = resolve_provider()
     moonshot_api_key = os.environ.get("MOONSHOT_API_KEY")
     openai_api_key = os.environ.get("OPENAI_API_KEY")
+    ollama_model = os.environ.get("OLLAMA_MODEL")
+    ollama_base_url = os.environ.get("OLLAMA_BASE_URL", OLLAMA_DEFAULT_BASE_URL)
+    ollama_api_key = os.environ.get("OLLAMA_API_KEY", "ollama")
     http_client = httpx.Client(trust_env=False)
 
-    if moonshot_api_key:
+    if provider == "ollama" or (
+        provider == "auto" and (ollama_model or os.environ.get("OLLAMA_BASE_URL"))
+    ):
+        resolved_model = model or ollama_model
+        if not resolved_model:
+            raise RuntimeError(
+                "Ollama is selected, but no model was provided. "
+                "Set OLLAMA_MODEL in .env or pass --model."
+            )
+        client = OpenAI(
+            api_key=ollama_api_key,
+            base_url=ollama_base_url,
+            http_client=http_client,
+        )
+        return client, resolved_model, 0.7
+
+    if provider in {"moonshot", "auto"} and moonshot_api_key:
         client = OpenAI(
             api_key=moonshot_api_key,
             base_url=MOONSHOT_BASE_URL,
@@ -104,12 +184,13 @@ def build_client_and_model(model: str | None) -> tuple[OpenAI, str, float]:
         )
         return client, model or MOONSHOT_DEFAULT_MODEL, 1.0
 
-    if openai_api_key:
+    if provider in {"openai", "auto"} and openai_api_key:
         client = OpenAI(api_key=openai_api_key, http_client=http_client)
         return client, model or OPENAI_DEFAULT_MODEL, 0.7
 
     raise RuntimeError(
-        "No API key found. Add MOONSHOT_API_KEY or OPENAI_API_KEY to the terminal environment or a .env file."
+        "No usable model provider found. Configure WORDLEARN_PROVIDER plus the matching environment "
+        "variables, or add MOONSHOT_API_KEY / OPENAI_API_KEY, or set OLLAMA_MODEL for a local Ollama model."
     )
 
 
@@ -145,33 +226,55 @@ def generate_passage(
 
     load_env_file()
     client, resolved_model, temperature = build_client_and_model(model)
-    prompt = build_prompt(words, normalize_exam_type(exam_type))
+    normalized_exam_type = normalize_exam_type(exam_type)
+    prompt = build_prompt(words, normalized_exam_type)
 
-    response = client.chat.completions.create(
-        model=resolved_model,
-        messages=[
-            {"role": "system", "content": "You generate exam-quality English passages."},
+    messages = [
+        {"role": "system", "content": "You generate exam-quality English passages."},
+        {"role": "user", "content": prompt},
+    ]
+    passage: dict[str, object] | None = None
+    last_error: Exception | None = None
+
+    for attempt in range(3):
+        response = client.chat.completions.create(
+            model=resolved_model,
+            messages=messages,
+            temperature=temperature if attempt == 0 else 0.0,
+        )
+
+        text = response.choices[0].message.content
+        if text is None:
+            last_error = RuntimeError("The model returned an empty response.")
+        else:
+            try:
+                passage = validate_passage_payload(
+                    parse_json_payload(text),
+                    normalized_exam_type,
+                )
+                break
+            except Exception as exc:
+                last_error = exc
+
+        messages = [
+            {
+                "role": "system",
+                "content": (
+                    "You generate exam-quality English passages. "
+                    "Return only strict JSON with double-quoted keys and no markdown."
+                ),
+            },
             {"role": "user", "content": prompt},
-        ],
-        temperature=temperature,
-    )
+            {"role": "assistant", "content": text or ""},
+            {
+                "role": "user",
+                "content": (
+                    "Your previous response was not valid JSON. "
+                    "Rewrite the same passage as strict JSON only, and obey the required paragraph count."
+                ),
+            },
+        ]
 
-    text = response.choices[0].message.content
-    if text is None:
-        raise RuntimeError("The model returned an empty response.")
-
-    passage = parse_json_payload(text)
-
-    title = passage.get("title")
-    paragraphs = passage.get("paragraphs")
-    if not isinstance(title, str) or not title.strip():
-        raise RuntimeError("The model returned an invalid passage title.")
-    if not isinstance(paragraphs, list) or not paragraphs or not all(
-        isinstance(paragraph, str) and paragraph.strip() for paragraph in paragraphs
-    ):
-        raise RuntimeError("The model returned invalid passage paragraphs.")
-
-    return {
-        "title": title.strip(),
-        "paragraphs": [paragraph.strip() for paragraph in paragraphs],
-    }
+    if passage is None:
+        raise RuntimeError(f"The model returned invalid passage JSON: {last_error}") from last_error
+    return passage

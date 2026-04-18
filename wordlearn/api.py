@@ -4,7 +4,7 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 
-from wordlearn.generator import generate_passage
+from wordlearn.generator import generate_passage, normalize_exam_type, resolve_provider
 from wordlearn.loader import load_words
 from wordlearn.question_generator import generate_questions, normalize_question_type
 
@@ -121,18 +121,42 @@ def build_fallback_questions(question_type: str) -> dict[str, object]:
 
 def build_fallback_payload(exam: str, question_type: str) -> dict[str, object]:
     title = f"{exam} Reading Practice: Nature's Complex Partnerships"
-    paragraphs = [
-        "In the natural world, the relationships between different species often go beyond simple survival. Symbiosis refers to the close and long-term interaction between two different biological organisms. These connections can be beneficial, neutral, or harmful depending on the specific circumstances. When both parties gain advantages, we call this a symbiotic relationship, which plays a vital role in maintaining ecological balance.",
-        "However, not all interactions are mutually beneficial. Some creatures have developed parasitic strategies, living on or inside a host organism and causing it harm. Another fascinating adaptation is mimicry, where one species evolves to resemble another for protection or hunting advantages. Scientists study these behaviors to understand how environmental pressures force organisms to adapt over time.",
-        "When environmental conditions are ripe for change, such as during seasonal shifts or resource shortages, the strain on both partners increases significantly. This pressure can cause relationships to evolve rapidly, transforming cooperative bonds into competitive struggles or forcing new alliances to form. Understanding these complex dynamics helps biologists predict how ecosystems might respond to climate change and other environmental threats."
-    ]
+    normalized_exam = normalize_exam_type(exam)
+
+    if normalized_exam == "IELTS":
+        paragraphs = [
+            "In biology, close long-term contact between different species is often described as symbiosis.",
+            "Such relationships may benefit both organisms, favour one side, or even harm a host.",
+            "Because these patterns are widespread, they help scientists explain how ecosystems remain stable over time.",
+            "One familiar example involves reef organisms that exchange shelter for nutrients.",
+            "Another example can be found in insects that rely on mimicry to avoid predators.",
+            "By copying the appearance of dangerous species, harmless creatures may improve their chances of survival.",
+            "Environmental pressure can still change these arrangements when resources become limited.",
+            "If conditions shift quickly, cooperation may weaken and competition may intensify.",
+            "For this reason, the study of symbiotic systems is important for understanding ecological change.",
+        ]
+    elif normalized_exam == "CET6":
+        paragraphs = [
+            "In the natural world, the relationships between species often extend beyond simple competition for survival.",
+            "Symbiosis refers to close and lasting contact between different organisms, and it may produce benefits, costs, or a mixture of both.",
+            "Some creatures develop mimicry or other adaptations in order to improve their position within these relationships.",
+            "Scientists examine such behavior to understand how environmental pressure shapes evolutionary change.",
+            "This knowledge also helps researchers predict how ecosystems may respond to future disturbance.",
+        ]
+    else:
+        paragraphs = [
+            "In the natural world, the relationships between different species often go beyond simple survival.",
+            "Symbiosis refers to the close and long-term interaction between two different biological organisms.",
+            "These connections can be beneficial, neutral, or harmful depending on the circumstances.",
+            "Scientists study such behavior to understand adaptation and ecological balance.",
+        ]
 
     return {
         "title": title,
         "paragraphs": paragraphs,
         "questions": build_fallback_questions(question_type),
         "source": "fallback",
-        "message": "Model rate limit reached. Showing local fallback content.",
+        "message": "The configured cloud model hit a rate limit, so local fallback content is being shown.",
     }
 
 
@@ -157,6 +181,8 @@ def generate(exam: str = "CET4", question_type: str = "careful_reading") -> dict
         }
     except Exception as exc:
         error_message = str(exc)
-        if "429" in error_message or "rate limit" in error_message.lower():
+        if resolve_provider() != "ollama" and (
+            "429" in error_message or "rate limit" in error_message.lower()
+        ):
             return build_fallback_payload(exam, question_type)
         raise HTTPException(status_code=500, detail=error_message) from exc
