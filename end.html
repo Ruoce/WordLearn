@@ -341,12 +341,12 @@
           </div>
 
           <div class="question-actions">
-            <button class="primary-btn" type="button" id="check-btn">Check Completion</button>
+            <button class="primary-btn" type="button" id="check-btn">Check Answers</button>
             <button class="secondary-btn" type="reset">Reset Answers</button>
           </div>
 
-          <div class="answer-summary" id="answer-summary">
-            Load a question set first, then answer the MCQ on the right.
+          <div class="answer-summary" id="answer-summary" role="status">
+            Load a question set first, then answer the questions on the right.
           </div>
         </form>
       </aside>
@@ -417,7 +417,7 @@
             const optionKeys = ["A", "B", "C", "D"];
 
             return `
-              <section class="question-card">
+              <section class="question-card" data-answer="${escapeHtml(item.answer ?? "")}">
                 <h3>${index + 1}. ${escapeHtml(item.question)}</h3>
                 <div class="option-list">
                   ${optionKeys.map((key) => `
@@ -450,7 +450,7 @@
             const options = ["True", "False", "Not Given"];
 
             return `
-              <section class="question-card">
+              <section class="question-card" data-answer="${escapeHtml(item.answer ?? "")}">
                 <h3>${index + 1}. ${escapeHtml(item.statement)}</h3>
                 <div class="option-list">
                   ${options.map((key) => `
@@ -484,7 +484,7 @@
             </div>
           </section>
           ${data.items.map((item, index) => `
-            <section class="question-card">
+            <section class="question-card" data-answer="${escapeHtml(item.answer ?? "")}">
               <h3>${index + 1}. ${escapeHtml(item.prompt)}</h3>
               <input
                 class="completion-input"
@@ -526,7 +526,7 @@
             </div>
           </section>
           ${items.map((item, index) => `
-            <section class="question-card">
+            <section class="question-card" data-answer="${escapeHtml(item.answer ?? "")}">
               <h3>${index + 1}. Paragraph ${escapeHtml(item.paragraph)}</h3>
               <input
                 class="completion-input"
@@ -612,7 +612,7 @@
           isFallback ? "warning" : "success"
         );
         answerSummary.textContent = data.message
-          || "Content loaded successfully. You can now answer the MCQ on the right.";
+          || "Content loaded successfully. You can now answer the questions on the right.";
       } catch (error) {
         pageTitle.textContent = "Failed to load content";
         paragraphsContainer.innerHTML = '<p class="empty">The article could not be loaded.</p>';
@@ -623,37 +623,119 @@
       }
     }
 
-    checkButton.addEventListener("click", () => {
-      const fields = Array.from(
-        questionsContainer.querySelectorAll("input[type='radio'], input[type='text']")
-      );
-      if (fields.length === 0) {
+    // Set to false to generate practice with the configured model again.
+    const DEMO_MODE = false;
+
+    function loadDemoContent() {
+      examSelect.value = "CET4";
+      questionTypeSelect.value = "careful_reading";
+      examSelect.disabled = true;
+      questionTypeSelect.disabled = true;
+
+      pageTitle.textContent = "Demo: Alice's Morning";
+      renderParagraphs([
+        "Alice eats an apple every morning. She walks to school because she enjoys the fresh air."
+      ], "CET4");
+      renderQuestions({
+        question_type: "careful_reading",
+        careful_reading: [
+          {
+            question: "What does Alice eat every morning?",
+            options: {
+              A: "An apple",
+              B: "A banana",
+              C: "An orange",
+              D: "An egg"
+            },
+            answer: "A"
+          },
+          {
+            question: "Why does Alice walk to school?",
+            options: {
+              A: "Her bike is broken",
+              B: "She enjoys the fresh air",
+              C: "The bus is expensive",
+              D: "Her school is far away"
+            },
+            answer: "B"
+          }
+        ]
+      });
+      questionForm.reset();
+      setStatus(articleStatus, "Demo passage loaded. No model connection needed.", "success");
+      setStatus(questionStatus, "2 demo questions loaded.", "success");
+      answerSummary.textContent = "Demo mode: choose your answers, then click Check Answers.";
+    }
+
+    function loadPractice() {
+      if (DEMO_MODE) {
+        loadDemoContent();
+      } else {
+        loadContent();
+      }
+    }
+
+    function normalizeAnswer(answer) {
+      return String(answer ?? "").trim().toLowerCase();
+    }
+
+    function clearGrading() {
+      questionsContainer.querySelectorAll(".answer-feedback").forEach((feedback) => {
+        feedback.remove();
+      });
+    }
+
+    function checkAnswers() {
+      const cards = Array.from(questionsContainer.querySelectorAll("[data-answer]"));
+      clearGrading();
+      if (cards.length === 0) {
         answerSummary.textContent = "There are no questions to check yet.";
         return;
       }
 
-      const radioGroups = Array.from(
-        new Set(
-          Array.from(questionsContainer.querySelectorAll("input[type='radio']")).map((input) => input.name)
-        )
-      );
-      const unansweredRadios = radioGroups.filter((name) => {
-        return !questionForm.querySelector(`input[name="${name}"]:checked`);
+      let correctCount = 0;
+      let unansweredCount = 0;
+      let unavailableCount = 0;
+      cards.forEach((card) => {
+        const input = card.querySelector("input[type='radio']:checked, input[type='text']");
+        const answer = normalizeAnswer(input?.value);
+        const expected = normalizeAnswer(card.dataset.answer);
+        const feedback = document.createElement("p");
+        feedback.className = "answer-feedback status-box";
+        if (!expected) {
+          unavailableCount += 1;
+          setStatus(feedback, "No answer key available for this question.", "warning");
+        } else if (!answer) {
+          unansweredCount += 1;
+          setStatus(feedback, "Unanswered.", "warning");
+        } else if (answer === expected) {
+          correctCount += 1;
+          setStatus(feedback, "Correct!", "success");
+        } else {
+          setStatus(feedback, `Incorrect. Correct answer: ${card.dataset.answer.trim()}`, "warning");
+        }
+        card.appendChild(feedback);
       });
-      const unansweredText = Array.from(
-        questionsContainer.querySelectorAll("input[type='text']")
-      ).filter((input) => !input.value.trim());
-      const unansweredCount = unansweredRadios.length + unansweredText.length;
 
-      if (unansweredCount === 0) {
-        answerSummary.textContent = "All questions have been answered.";
-        return;
-      }
+      answerSummary.textContent = `${correctCount} / ${cards.length} correct. ${unansweredCount} unanswered.`
+        + (unavailableCount ? ` ${unavailableCount} could not be graded.` : "");
+    }
 
-      answerSummary.textContent = `${unansweredCount} question(s) are still unanswered.`;
+    checkButton.addEventListener("click", checkAnswers);
+    questionForm.addEventListener("submit", (event) => {
+      event.preventDefault();
+      checkAnswers();
+    });
+    questionForm.addEventListener("input", () => {
+      clearGrading();
+      answerSummary.textContent = "Answers changed. Click Check Answers to grade again.";
+    });
+    questionForm.addEventListener("reset", () => {
+      clearGrading();
+      answerSummary.textContent = "Answers reset. Complete the questions and click Check Answers.";
     });
 
-    reloadButton.addEventListener("click", loadContent);
+    reloadButton.addEventListener("click", loadPractice);
     examSelect.addEventListener("change", () => {
       if (examSelect.value === "CET4" || examSelect.value === "CET6") {
         const allowed = new Set(["careful_reading", "banked_cloze", "paragraph_matching"]);
@@ -662,7 +744,7 @@
         }
       }
     });
-    loadContent();
+    loadPractice();
   </script>
 </body>
 </html>
