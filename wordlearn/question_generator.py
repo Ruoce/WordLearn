@@ -1,5 +1,6 @@
 from wordlearn.generator import (
     build_client_and_model,
+    generation_options,
     describe_exam_type,
     normalize_exam_type,
     parse_json_payload,
@@ -28,13 +29,21 @@ def normalize_question_type(question_type: str) -> str:
     return normalized
 
 
+def validate_exam_question_type(exam_type: str, question_type: str) -> str:
+    exam = normalize_exam_type(exam_type)
+    question = normalize_question_type(question_type)
+    if exam in {"CET4", "CET6"} and question == "tfng":
+        raise ValueError("四、六级不支持判断题，请选择仔细阅读、选词填空或段落匹配。")
+    return question
+
+
 def build_question_prompt(
     passage: dict[str, object],
     exam_type: str,
     question_type: str,
 ) -> str:
     normalized_exam_type = normalize_exam_type(exam_type)
-    normalized_question_type = normalize_question_type(question_type)
+    normalized_question_type = validate_exam_question_type(exam_type, question_type)
     exam_description = describe_exam_type(normalized_exam_type)
     title = str(passage["title"])
     paragraphs = passage["paragraphs"]
@@ -211,75 +220,80 @@ def generate_questions(
     exam_type: str = "CET4",
     question_type: str = "careful_reading",
     model: str | None = None,
+    settings: dict | None = None,
 ) -> dict[str, object]:
     paragraphs = passage.get("paragraphs")
     if not isinstance(paragraphs, list) or not paragraphs:
         raise ValueError("Passage is empty.")
 
-    normalized_question_type = normalize_question_type(question_type)
-    client, resolved_model, temperature = build_client_and_model(model)
-    prompt = build_question_prompt(passage, exam_type, normalized_question_type)
-    messages = [
-        {"role": "system", "content": "You create structured reading comprehension question sets."},
-        {"role": "user", "content": prompt},
-    ]
-    questions: dict[str, object] | None = None
-    last_error: Exception | None = None
-
-    for attempt in range(3):
-        response = client.chat.completions.create(
-            model=resolved_model,
-            messages=messages,
-            temperature=temperature if attempt == 0 else 0.0,
-        )
-
-        text = response.choices[0].message.content
-        if text is None:
-            last_error = RuntimeError("The model returned empty questions.")
-        else:
-            try:
-                questions = parse_json_payload(text)
-                break
-            except Exception as exc:
-                last_error = exc
-
+    normalized_question_type = validate_exam_question_type(exam_type, question_type)
+    client, resolved_model, temperature = build_client_and_model(model, settings)
+    try:
+        prompt = build_question_prompt(passage, exam_type, normalized_question_type)
         messages = [
-            {
-                "role": "system",
-                "content": (
-                    "You create structured reading comprehension question sets. "
-                    "Return only strict JSON with double-quoted keys and no markdown."
-                ),
-            },
+            {"role": "system", "content": "You create structured reading comprehension question sets."},
             {"role": "user", "content": prompt},
-            {"role": "assistant", "content": text or ""},
-            {
-                "role": "user",
-                "content": (
-                    "Your previous response was not valid JSON. "
-                    "Rewrite the same question set as strict JSON only."
-                ),
-            },
         ]
+        questions: dict[str, object] | None = None
+        last_error: Exception | None = None
 
-    if questions is None:
-        raise RuntimeError(f"The model returned invalid questions JSON: {last_error}") from last_error
+        for attempt in range(2):
+            response = client.chat.completions.create(
+                model=resolved_model,
+                messages=messages,
+                temperature=temperature if attempt == 0 else 0.0,
+                **generation_options(settings),
+            )
 
-    result = {"question_type": normalized_question_type}
+            text = response.choices[0].message.content
+            if text is None:
+                last_error = RuntimeError("The model returned empty questions.")
+            else:
+                try:
+                    questions = parse_json_payload(text)
+                    break
+                except Exception as exc:
+                    last_error = exc
 
-    if normalized_question_type == "careful_reading":
-        result["careful_reading"] = validate_careful_reading(
-            questions.get("careful_reading") or questions.get("mcq")
-        )
-    elif normalized_question_type == "banked_cloze":
-        result["banked_cloze"] = validate_banked_cloze(
-            questions.get("banked_cloze") or questions.get("completion")
-        )
-    elif normalized_question_type == "paragraph_matching":
-        result["paragraph_matching"] = validate_paragraph_matching(
-            questions.get("paragraph_matching") or questions.get("matching_headings")
-        )
-    else:
-        result["tfng"] = validate_tfng(questions.get("tfng"))
+            messages = [
+                {
+                    "role": "system",
+                    "content": (
+                        "You create structured reading comprehension question sets. "
+                        "Return only strict JSON with double-quoted keys and no markdown."
+                    ),
+                },
+                {"role": "user", "content": prompt},
+                {"role": "assistant", "content": text or ""},
+                {
+                    "role": "user",
+                    "content": (
+                        "Your previous response was not valid JSON. "
+                        "Rewrite the same question set as strict JSON only."
+                    ),
+                },
+            ]
 
-    return result
+        if questions is None:
+            raise RuntimeError(f"The model returned invalid questions JSON: {last_error}") from last_error
+
+        result = {"question_type": normalized_question_type}
+
+        if normalized_question_type == "careful_reading":
+            result["careful_reading"] = validate_careful_reading(
+                questions.get("careful_reading") or questions.get("mcq")
+            )
+        elif normalized_question_type == "banked_cloze":
+            result["banked_cloze"] = validate_banked_cloze(
+                questions.get("banked_cloze") or questions.get("completion")
+            )
+        elif normalized_question_type == "paragraph_matching":
+            result["paragraph_matching"] = validate_paragraph_matching(
+                questions.get("paragraph_matching") or questions.get("matching_headings")
+            )
+        else:
+            result["tfng"] = validate_tfng(questions.get("tfng"))
+
+        return result
+    finally:
+        client.close()

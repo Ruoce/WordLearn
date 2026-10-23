@@ -1,5 +1,4 @@
 import json
-import os
 from typing import List
 
 import httpx
@@ -10,16 +9,8 @@ OPENAI_DEFAULT_MODEL = "gpt-4o-mini"
 MOONSHOT_DEFAULT_MODEL = "kimi-k2.5"
 MOONSHOT_BASE_URL = "https://api.moonshot.cn/v1"
 OLLAMA_DEFAULT_BASE_URL = "http://127.0.0.1:11434/v1"
-
-
-def resolve_provider() -> str:
-    provider = os.environ.get("WORDLEARN_PROVIDER", "auto").strip().lower()
-    allowed = {"auto", "openai", "moonshot", "ollama"}
-    if provider not in allowed:
-        raise RuntimeError(
-            "WORDLEARN_PROVIDER must be one of: auto, openai, moonshot, ollama."
-        )
-    return provider
+DEEPSEEK_DEFAULT_MODEL = "deepseek-flash"
+DEEPSEEK_DEFAULT_BASE_URL = "https://api.deepseek.com"
 
 
 def normalize_exam_type(exam_type: str) -> str:
@@ -77,24 +68,6 @@ def get_passage_requirements(exam_type: str) -> dict[str, int]:
     }
 
 
-def load_env_file(env_path: str = ".env") -> None:
-    if not os.path.exists(env_path):
-        return
-
-    with open(env_path, "r", encoding="utf-8") as env_file:
-        for raw_line in env_file:
-            line = raw_line.strip()
-            if not line or line.startswith("#") or "=" not in line:
-                continue
-
-            key, value = line.split("=", 1)
-            key = key.strip()
-            value = value.strip().strip('"').strip("'")
-
-            if key and key not in os.environ:
-                os.environ[key] = value
-
-
 def build_prompt(words: List[str], exam_type: str) -> str:
     word_list = ", ".join(words)
     normalized_exam_type = normalize_exam_type(exam_type)
@@ -150,48 +123,40 @@ def validate_passage_payload(passage: dict[str, object], exam_type: str) -> dict
     }
 
 
-def build_client_and_model(model: str | None) -> tuple[OpenAI, str, float]:
-    load_env_file()
-    provider = resolve_provider()
-    moonshot_api_key = os.environ.get("MOONSHOT_API_KEY")
-    openai_api_key = os.environ.get("OPENAI_API_KEY")
-    ollama_model = os.environ.get("OLLAMA_MODEL")
-    ollama_base_url = os.environ.get("OLLAMA_BASE_URL", OLLAMA_DEFAULT_BASE_URL)
-    ollama_api_key = os.environ.get("OLLAMA_API_KEY", "ollama")
-    http_client = httpx.Client(trust_env=False)
-
-    if provider == "ollama" or (
-        provider == "auto" and (ollama_model or os.environ.get("OLLAMA_BASE_URL"))
-    ):
-        resolved_model = model or ollama_model
-        if not resolved_model:
-            raise RuntimeError(
-                "Ollama is selected, but no model was provided. "
-                "Set OLLAMA_MODEL in .env or pass --model."
-            )
-        client = OpenAI(
-            api_key=ollama_api_key,
-            base_url=ollama_base_url,
-            http_client=http_client,
-        )
-        return client, resolved_model, 0.7
-
-    if provider in {"moonshot", "auto"} and moonshot_api_key:
-        client = OpenAI(
-            api_key=moonshot_api_key,
-            base_url=MOONSHOT_BASE_URL,
-            http_client=http_client,
-        )
-        return client, model or MOONSHOT_DEFAULT_MODEL, 1.0
-
-    if provider in {"openai", "auto"} and openai_api_key:
-        client = OpenAI(api_key=openai_api_key, http_client=http_client)
-        return client, model or OPENAI_DEFAULT_MODEL, 0.7
-
-    raise RuntimeError(
-        "No usable model provider found. Configure WORDLEARN_PROVIDER plus the matching environment "
-        "variables, or add MOONSHOT_API_KEY / OPENAI_API_KEY, or set OLLAMA_MODEL for a local Ollama model."
+def build_client_and_model(model: str | None, settings: dict | None = None) -> tuple[OpenAI, str, float]:
+    if not settings:
+        raise ValueError("请在界面中选择模型提供方并输入密钥。")
+    if settings.get("provider") not in {"openai", "moonshot", "deepseek", "ollama"}:
+        raise ValueError("请选择有效的模型提供方。")
+    if settings["provider"] != "ollama" and not settings.get("api_key", "").strip():
+        raise ValueError("请填写所选提供方的 API 密钥。")
+    provider = settings["provider"]
+    defaults = {
+        "openai": ("https://api.openai.com/v1", OPENAI_DEFAULT_MODEL, 0.7),
+        "moonshot": (MOONSHOT_BASE_URL, MOONSHOT_DEFAULT_MODEL, 1.0),
+        "deepseek": (DEEPSEEK_DEFAULT_BASE_URL, DEEPSEEK_DEFAULT_MODEL, 0.7),
+        "ollama": (OLLAMA_DEFAULT_BASE_URL, "llama3.1:8b", 0.7),
+    }
+    base_url, default_model, temperature = defaults[provider]
+    client = OpenAI(
+        api_key=settings.get("api_key") or "ollama",
+        base_url=base_url,
+        http_client=httpx.Client(trust_env=False),
+        timeout=httpx.Timeout(60.0, connect=10.0),
+        max_retries=0,
     )
+    return client, model or settings.get("model") or default_model, temperature
+
+
+def generation_options(settings: dict | None) -> dict:
+    # DeepSeek defaults to thinking mode, which is unnecessary for this task.
+    if settings and settings.get("provider") == "deepseek":
+        return {
+            "extra_body": {"thinking": {"type": "disabled"}},
+            "response_format": {"type": "json_object"},
+            "max_tokens": 4096,
+        }
+    return {}
 
 
 def parse_json_payload(text: str) -> dict:
@@ -220,61 +185,65 @@ def generate_passage(
     words: List[str],
     exam_type: str = "CET4",
     model: str | None = None,
+    settings: dict | None = None,
 ) -> dict[str, object]:
     if not words:
         raise ValueError("Word list is empty.")
 
-    load_env_file()
-    client, resolved_model, temperature = build_client_and_model(model)
-    normalized_exam_type = normalize_exam_type(exam_type)
-    prompt = build_prompt(words, normalized_exam_type)
-
-    messages = [
-        {"role": "system", "content": "You generate exam-quality English passages."},
-        {"role": "user", "content": prompt},
-    ]
-    passage: dict[str, object] | None = None
-    last_error: Exception | None = None
-
-    for attempt in range(3):
-        response = client.chat.completions.create(
-            model=resolved_model,
-            messages=messages,
-            temperature=temperature if attempt == 0 else 0.0,
-        )
-
-        text = response.choices[0].message.content
-        if text is None:
-            last_error = RuntimeError("The model returned an empty response.")
-        else:
-            try:
-                passage = validate_passage_payload(
-                    parse_json_payload(text),
-                    normalized_exam_type,
-                )
-                break
-            except Exception as exc:
-                last_error = exc
+    client, resolved_model, temperature = build_client_and_model(model, settings)
+    try:
+        normalized_exam_type = normalize_exam_type(exam_type)
+        prompt = build_prompt(words, normalized_exam_type)
 
         messages = [
-            {
-                "role": "system",
-                "content": (
-                    "You generate exam-quality English passages. "
-                    "Return only strict JSON with double-quoted keys and no markdown."
-                ),
-            },
+            {"role": "system", "content": "You generate exam-quality English passages."},
             {"role": "user", "content": prompt},
-            {"role": "assistant", "content": text or ""},
-            {
-                "role": "user",
-                "content": (
-                    "Your previous response was not valid JSON. "
-                    "Rewrite the same passage as strict JSON only, and obey the required paragraph count."
-                ),
-            },
         ]
+        passage: dict[str, object] | None = None
+        last_error: Exception | None = None
 
-    if passage is None:
-        raise RuntimeError(f"The model returned invalid passage JSON: {last_error}") from last_error
-    return passage
+        for attempt in range(2):
+            response = client.chat.completions.create(
+                model=resolved_model,
+                messages=messages,
+                temperature=temperature if attempt == 0 else 0.0,
+                **generation_options(settings),
+            )
+
+            text = response.choices[0].message.content
+            if text is None:
+                last_error = RuntimeError("The model returned an empty response.")
+            else:
+                try:
+                    passage = validate_passage_payload(
+                        parse_json_payload(text),
+                        normalized_exam_type,
+                    )
+                    break
+                except Exception as exc:
+                    last_error = exc
+
+            messages = [
+                {
+                    "role": "system",
+                    "content": (
+                        "You generate exam-quality English passages. "
+                        "Return only strict JSON with double-quoted keys and no markdown."
+                    ),
+                },
+                {"role": "user", "content": prompt},
+                {"role": "assistant", "content": text or ""},
+                {
+                    "role": "user",
+                    "content": (
+                        "Your previous response was not valid JSON. "
+                        "Rewrite the same passage as strict JSON only, and obey the required paragraph count."
+                    ),
+                },
+            ]
+
+        if passage is None:
+            raise RuntimeError(f"The model returned invalid passage JSON: {last_error}") from last_error
+        return passage
+    finally:
+        client.close()

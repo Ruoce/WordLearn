@@ -1,12 +1,17 @@
+import logging
 from pathlib import Path
+from typing import Literal
 
-from fastapi import FastAPI, HTTPException
+from openai import APITimeoutError, APIConnectionError
+from pydantic import BaseModel, Field, SecretStr
+
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 
-from wordlearn.generator import generate_passage, normalize_exam_type, resolve_provider
-from wordlearn.loader import load_words
-from wordlearn.question_generator import generate_questions, normalize_question_type
+from wordlearn.generator import build_client_and_model, generate_passage, normalize_exam_type
+from wordlearn.loader import load_words, parse_uploaded_words, normalize_uploaded_words, MAX_UPLOAD_BYTES
+from wordlearn.question_generator import generate_questions, normalize_question_type, validate_exam_question_type
 
 
 app = FastAPI()
@@ -165,13 +170,73 @@ def index() -> FileResponse:
     return FileResponse(HTML_FILE)
 
 
-@app.get("/generate")
-def generate(exam: str = "CET4", question_type: str = "careful_reading") -> dict[str, object]:
-    try:
-        words = load_words(str(WORDS_FILE))
+class GenerateRequest(BaseModel):
+    exam: Literal["CET4", "CET6", "IELTS"] = "CET4"
+    question_type: Literal["careful_reading", "banked_cloze", "paragraph_matching", "tfng"] = "careful_reading"
+    provider: Literal["openai", "moonshot", "deepseek", "ollama"]
+    api_key: SecretStr = SecretStr("")
+    model: str = Field(default="", max_length=200)
+    words: list[str] | None = Field(default=None, max_length=100)
 
-        passage = generate_passage(words, exam_type=exam)
-        questions = generate_questions(passage, exam_type=exam, question_type=question_type)
+
+@app.post("/words/upload")
+async def upload_words(request: Request, filename: str) -> dict[str, object]:
+    content = bytearray()
+    async for chunk in request.stream():
+        content.extend(chunk)
+        if len(content) > MAX_UPLOAD_BYTES:
+            raise HTTPException(status_code=413, detail="文件不能超过 5 MB。")
+    try:
+        words = parse_uploaded_words(bytes(content), filename)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from None
+    return {"words": words, "count": len(words)}
+
+
+@app.post("/models")
+def list_models(request: GenerateRequest) -> dict[str, object]:
+    key = request.api_key.get_secret_value().strip()
+    if request.provider != "ollama" and not key:
+        raise HTTPException(status_code=400, detail="请先输入 API 密钥。")
+    client = None
+    try:
+        client, _, _ = build_client_and_model(None, {"provider": request.provider, "api_key": key})
+        models = sorted({item.id for item in client.models.list()})
+        return {"models": models}
+    except Exception:
+        raise HTTPException(status_code=502, detail="无法获取模型列表，请检查密钥和服务连接，或手动填写模型名称。") from None
+    finally:
+        if client is not None:
+            client.close()
+
+
+@app.post("/generate")
+def generate_with_settings(request: GenerateRequest) -> dict[str, object]:
+    key = request.api_key.get_secret_value().strip()
+    if request.provider != "ollama" and not key:
+        raise HTTPException(status_code=400, detail="请填写所选提供方的 API 密钥。")
+    settings = {"provider": request.provider, "api_key": key, "model": request.model.strip()}
+    try:
+        words = normalize_uploaded_words(request.words) if request.words is not None else None
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from None
+    return run_generation(request.exam, request.question_type, settings, words)
+
+
+def run_generation(exam: str, question_type: str, settings: dict, words: list[str] | None = None) -> dict[str, object]:
+    try:
+        validate_exam_question_type(exam, question_type)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from None
+    stage = "读取词表"
+    try:
+        if words is None:
+            words = load_words(str(WORDS_FILE))
+
+        stage = "生成文章"
+        passage = generate_passage(words, exam_type=exam, settings=settings)
+        stage = "生成题目"
+        questions = generate_questions(passage, exam_type=exam, question_type=question_type, settings=settings)
 
         return {
             "title": passage["title"],
@@ -180,9 +245,23 @@ def generate(exam: str = "CET4", question_type: str = "careful_reading") -> dict
             "source": "model",
         }
     except Exception as exc:
+        logging.getLogger(__name__).warning("Generation failed: stage=%s type=%s status=%s", stage, type(exc).__name__, getattr(exc, "status_code", None))
+        if isinstance(exc, APITimeoutError):
+            raise HTTPException(status_code=504, detail=f"{stage}时模型响应超时，请稍后重试或切换模型。") from None
+        if isinstance(exc, APIConnectionError):
+            raise HTTPException(status_code=502, detail=f"{stage}时无法连接模型服务，请检查网络或本地服务。") from None
         error_message = str(exc)
-        if resolve_provider() != "ollama" and (
+        if settings["provider"] != "ollama" and (
             "429" in error_message or "rate limit" in error_message.lower()
         ):
             return build_fallback_payload(exam, question_type)
-        raise HTTPException(status_code=500, detail=error_message) from exc
+        status = getattr(exc, "status_code", None)
+        if status in {401, 403}:
+            detail = "密钥无效或无访问权限，请检查模型与密钥设置。"
+        elif status in {400, 404, 422}:
+            detail = f"{stage}失败：模型服务拒绝请求，请确认所选模型支持对话生成。"
+        elif isinstance(exc, RuntimeError):
+            detail = f"{stage}失败：模型返回内容未符合练习格式，请重试或切换模型。"
+        else:
+            detail = f"{stage}失败，请检查网络连接及账户额度后重试。"
+        raise HTTPException(status_code=502, detail=detail) from None

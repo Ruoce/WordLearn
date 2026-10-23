@@ -1,4 +1,5 @@
 import argparse
+from getpass import getpass
 
 from wordlearn.generator import generate_passage
 from wordlearn.loader import load_words
@@ -26,6 +27,7 @@ def build_parser() -> argparse.ArgumentParser:
         default=None,
         help="Model used to generate the passage. Leave empty to auto-select by provider.",
     )
+    parser.add_argument("--provider", choices=["deepseek", "openai", "moonshot", "ollama"], default="deepseek")
     return parser
 
 
@@ -37,16 +39,20 @@ def main() -> None:
     if not words:
         raise ValueError(f"No usable words were found in {args.file}.")
 
+    settings = {"provider": args.provider, "api_key": "" if args.provider == "ollama" else getpass("API Key: ").strip()}
+
     passage = generate_passage(
         words,
         exam_type=args.exam,
         model=args.model,
+        settings=settings,
     )
     passage_text = "\n\n".join(passage["paragraphs"])
     questions = generate_questions(
         passage,
         exam_type=args.exam,
         model=args.model,
+        settings=settings,
     )
     missing_words = check_missing_words(passage_text, words)
 

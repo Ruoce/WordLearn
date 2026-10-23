@@ -1,9 +1,9 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="zh-CN">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Reading Practice</title>
+<title>英语阅读练习</title>
 <style>
   :root {
     --bg: #f6f1e8;
@@ -293,67 +293,211 @@
       grid-template-columns: 1fr;
     }
   }
+  [hidden] { display: none !important; }
+  .setup-page { max-width: 850px; margin: 0 auto; }
+  .setup-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; margin: 26px 0; }
+  .setup-field { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+  .setup-field label { font-weight: 600; }
+  .setup-field input { margin-top: 0; }
+  .setup-field .toolbar { margin-top: 0; }
+  button:disabled { opacity: .6; cursor: wait; }
+  .steps { color: var(--accent); margin-bottom: 22px; font-weight: 600; }
+  @media (max-width: 600px) { .setup-grid { grid-template-columns: 1fr; } .hero { padding: 22px 18px; } }
 </style>
 </head>
 <body>
   <div class="page">
+    <section id="setup-page" class="setup-page">
     <header class="hero">
-      <p class="eyebrow">Dynamic Reading Practice</p>
-      <h1 id="page-title">Loading passage...</h1>
-      <p class="subtitle">
-         完成阅读练习并回答相关问题，提升你的英语阅读理解能力。每次点击“Generate New Set”都会为你提供一篇新的文章和一套新的问题，涵盖不同的考试类型和题型。选择你想练习的考试和题型，开始你的阅读之旅吧！
-      </p>
-
-      <div class="toolbar">
-        <label for="exam-select">Exam Type</label>
-        <select id="exam-select">
-          <option value="CET4">CET4</option>
-          <option value="CET6">CET6</option>
-          <option value="IELTS">IELTS</option>
-        </select>
-        <label for="question-type-select">Question Type</label>
-        <select id="question-type-select">
-          <option value="careful_reading">Careful Reading</option>
-          <option value="banked_cloze">Banked Cloze</option>
-          <option value="paragraph_matching">Paragraph Matching</option>
-          <option value="tfng">True / False / Not Given</option>
-        </select>
-        <button class="primary-btn" type="button" id="reload-btn">Generate New Set</button>
+      <p class="steps">01 配置练习 · 02 阅读与答题</p>
+      <h1 id="setup-title" tabindex="-1">准备你的阅读练习</h1>
+      <p class="subtitle">连接模型，选择考试类型和题型，即可开始。</p>
+      <form id="setup-form">
+      <fieldset id="setup-fields" style="border: 0; padding: 0; margin: 0; min-width: 0;">
+      <div class="setup-grid">
+        <div class="setup-field">
+          <label for="provider-select">LLM 提供方</label>
+          <select id="provider-select">
+            <option value="deepseek">DeepSeek</option><option value="openai">OpenAI</option>
+            <option value="moonshot">Moonshot / Kimi</option><option value="ollama">本地 Ollama</option>
+          </select>
+        </div>
+        <div class="setup-field">
+          <label for="api-key">API 密钥</label>
+          <input class="completion-input" id="api-key" type="password" autocomplete="off" spellcheck="false" placeholder="粘贴 API Key">
+        </div>
+        <div class="setup-field" style="grid-column: 1 / -1;">
+          <label for="model-select">选择模型</label>
+          <div class="toolbar">
+            <select id="model-select"><option value="">请先获取模型列表</option><option value="custom">手动填写模型名称</option></select>
+            <button class="secondary-btn" type="button" id="fetch-models">获取可用模型</button>
+          </div>
+          <input class="completion-input" id="model-name" type="text" autocomplete="off" placeholder="输入此提供方支持的对话模型名称" hidden>
+          <p class="empty" id="model-hint" role="status">输入密钥后获取该提供方的模型列表，请选择支持对话生成的模型。</p>
+        </div>
+        <div class="setup-field">
+          <label for="exam-select">题目难度</label>
+          <select id="exam-select"><option value="CET4">大学英语四级</option><option value="CET6">大学英语六级</option><option value="IELTS">雅思</option></select>
+        </div>
+        <div class="setup-field">
+          <label for="question-type-select">题目类型</label>
+          <select id="question-type-select"><option value="careful_reading">仔细阅读</option><option value="banked_cloze">选词填空</option><option value="paragraph_matching">段落匹配</option><option value="tfng">判断题（正确 / 错误 / 未提及）</option></select>
+        </div>
+        <div class="setup-field" style="grid-column: 1 / -1;">
+          <label for="words-file">上传单词表（可选）</label>
+          <input id="words-file" type="file" accept=".xlsx,.csv">
+          <p class="empty">支持 Excel（.xlsx）和 UTF-8 CSV；读取第一张表的第一列，每行一个单词，可带“单词 / word”表头。最多 100 个单词、5 MB。</p>
+          <button class="secondary-btn" type="button" id="reset-words">使用默认词表</button>
+          <p id="words-status" role="status" aria-live="polite">当前使用默认词表。</p>
+        </div>
+        <button class="primary-btn" type="submit" id="reload-btn">生成练习，开始答题 →</button>
       </div>
+      </fieldset>
+      </form>
+      <p id="config-hint" role="status" aria-live="polite">填写密钥并选择模型后开始。</p>
+      <p class="empty">密钥仅用于当前页面，刷新后清除。本地 Ollama 无需密钥。</p>
+    </header>
+    </section>
+    <section id="practice-page" hidden>
+    <header class="hero">
+      <p class="steps">02 阅读与答题</p>
+      <h1 id="page-title" tabindex="-1">阅读练习</h1>
+      <p id="practice-settings" class="subtitle"></p>
+      <div class="toolbar"><button class="secondary-btn" type="button" id="back-setup">← 返回配置 / 新练习</button></div>
     </header>
 
     <div class="layout">
       <section class="panel article-panel">
-        <h2 class="panel-title">Article</h2>
-        <div class="status-box" id="article-status">Waiting for content...</div>
+        <h2 class="panel-title">阅读文章</h2>
+        <div class="status-box" id="article-status">等待生成内容……</div>
         <div id="paragraphs-container">
-          <p class="empty">No article loaded yet.</p>
+          <p class="empty">暂时还没有文章。</p>
         </div>
       </section>
 
       <aside class="panel question-panel">
-        <h2 class="panel-title">Questions</h2>
-        <div class="status-box" id="question-status">Waiting for content...</div>
+        <h2 class="panel-title">练习题目</h2>
+        <div class="status-box" id="question-status">等待生成内容……</div>
 
         <form id="question-form">
           <div id="questions-container">
-            <p class="empty">No questions loaded yet.</p>
+            <p class="empty">暂时还没有题目。</p>
           </div>
 
           <div class="question-actions">
-            <button class="primary-btn" type="button" id="check-btn">Check Answers</button>
-            <button class="secondary-btn" type="reset">Reset Answers</button>
+            <button class="primary-btn" type="button" id="check-btn">检查答案</button>
+            <button class="secondary-btn" type="reset">清空答案</button>
           </div>
 
           <div class="answer-summary" id="answer-summary" role="status">
-            Load a question set first, then answer the questions on the right.
+            请先生成一套练习，再完成题目。
           </div>
         </form>
       </aside>
     </div>
+    </section>
   </div>
 
   <script>
+    let uploadedWords = null;
+    let wordsLoading = false;
+    let wordsError = false;
+    let wordsVersion = 0;
+    const wordsFile = document.getElementById("words-file");
+    const wordsStatus = document.getElementById("words-status");
+    document.getElementById("reset-words").addEventListener("click", () => {
+      wordsVersion++;
+      wordsFile.value = "";
+      uploadedWords = null;
+      wordsLoading = wordsError = false;
+      wordsStatus.textContent = "当前使用默认词表。";
+    });
+    wordsFile.addEventListener("change", async () => {
+      const version = ++wordsVersion;
+      const file = wordsFile.files[0];
+      if (!file) return;
+      uploadedWords = null;
+      wordsError = false;
+      wordsLoading = true;
+      wordsStatus.textContent = "正在读取词表……";
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), 30000);
+      try {
+        if (file.size > 5 * 1024 * 1024) throw new Error("文件不能超过 5 MB。");
+        const response = await fetch(`/words/upload?filename=${encodeURIComponent(file.name)}`, {
+          method: "POST", headers: {"Content-Type": "application/octet-stream"}, body: file, signal: controller.signal,
+        });
+        const data = await response.json();
+        if (version !== wordsVersion) return;
+        if (!response.ok) throw new Error(typeof data.detail === "string" ? data.detail : "词表上传失败。");
+        uploadedWords = data.words;
+        wordsStatus.textContent = `${file.name}：已读取 ${data.count} 个单词。预览：${data.words.slice(0, 8).join("、")}${data.count > 8 ? "……" : ""}`;
+      } catch (error) {
+        if (version !== wordsVersion) return;
+        wordsError = true;
+        wordsStatus.textContent = error.name === "AbortError" ? "上传超时，请重新选择文件。" : error.message;
+      } finally {
+        clearTimeout(timer);
+        if (version === wordsVersion) wordsLoading = false;
+      }
+    });
+    const providerSelect = document.getElementById("provider-select");
+    const apiKeyInput = document.getElementById("api-key");
+    const modelInput = document.getElementById("model-name");
+    const modelSelect = document.getElementById("model-select");
+    const modelHint = document.getElementById("model-hint");
+    const fetchModelsButton = document.getElementById("fetch-models");
+    let modelRequestVersion = 0;
+    function resetModels() {
+      modelRequestVersion++;
+      modelSelect.innerHTML = '<option value="">请先获取模型列表</option><option value="custom">手动填写模型名称</option>';
+      modelInput.value = "";
+      modelInput.hidden = true;
+      fetchModelsButton.disabled = false;
+      modelHint.textContent = "获取当前提供方的可用模型，或手动填写模型名称。";
+    }
+    providerSelect.addEventListener("change", () => {
+      apiKeyInput.value = "";
+      apiKeyInput.disabled = providerSelect.value === "ollama";
+      resetModels();
+      document.getElementById("config-hint").textContent = apiKeyInput.disabled ? "请先启动 Ollama，再获取本地已安装的模型。" : "请填写当前提供方的密钥。";
+    });
+    apiKeyInput.addEventListener("input", resetModels);
+    modelSelect.addEventListener("change", () => {
+      modelInput.hidden = modelSelect.value !== "custom";
+      if (!modelInput.hidden) modelInput.focus();
+    });
+    fetchModelsButton.addEventListener("click", async () => {
+      if (!apiKeyInput.disabled && !apiKeyInput.value.trim()) {
+        modelHint.textContent = "请先输入 API 密钥。";
+        apiKeyInput.focus();
+        return;
+      }
+      const version = ++modelRequestVersion;
+      fetchModelsButton.disabled = true;
+      modelHint.textContent = "正在获取模型列表……";
+      try {
+        const response = await fetch("/models", { method: "POST", headers: {"Content-Type": "application/json"},
+          body: JSON.stringify({provider: providerSelect.value, api_key: apiKeyInput.value.trim()}) });
+        const data = await response.json();
+        if (version !== modelRequestVersion) return;
+        if (!response.ok) throw new Error(typeof data.detail === "string" ? data.detail : "获取模型失败。");
+        modelSelect.replaceChildren(new Option("请选择对话模型", ""), ...data.models.map(name => new Option(name, name)), new Option("手动填写模型名称", "custom"));
+        modelInput.hidden = true;
+        modelHint.textContent = data.models.length ? `已获取 ${data.models.length} 个模型，请选择支持对话生成的模型。` : "没有可用模型，请检查服务或手动填写。";
+      } catch (error) {
+        if (version === modelRequestVersion) modelHint.textContent = error.message;
+      } finally {
+        if (version === modelRequestVersion) fetchModelsButton.disabled = false;
+      }
+    });
+    function showPage(practice) {
+      document.getElementById("setup-page").hidden = practice;
+      document.getElementById("practice-page").hidden = !practice;
+      document.getElementById(practice ? "page-title" : "setup-title").focus();
+      window.scrollTo(0, 0);
+    }
+    document.getElementById("back-setup").addEventListener("click", () => showPage(false));
     const pageTitle = document.getElementById("page-title");
     const examSelect = document.getElementById("exam-select");
     const questionTypeSelect = document.getElementById("question-type-select");
@@ -366,6 +510,28 @@
     const questionForm = document.getElementById("question-form");
     const checkButton = document.getElementById("check-btn");
     const answerSummary = document.getElementById("answer-summary");
+
+    const questionTypeLabels = {
+      careful_reading: "仔细阅读",
+      banked_cloze: "选词填空",
+      paragraph_matching: "段落匹配",
+      tfng: "判断题",
+    };
+
+    function updateQuestionTypes() {
+      const previous = questionTypeSelect.value;
+      const allowed = examSelect.value === "IELTS"
+        ? ["careful_reading", "banked_cloze", "paragraph_matching", "tfng"]
+        : ["careful_reading", "banked_cloze", "paragraph_matching"];
+      questionTypeSelect.replaceChildren(...allowed.map(type => new Option(questionTypeLabels[type], type)));
+      questionTypeSelect.value = allowed.includes(previous) ? previous : "careful_reading";
+    }
+    examSelect.addEventListener("change", updateQuestionTypes);
+    updateQuestionTypes();
+
+    function displayAnswer(answer) {
+      return ({ True: "正确", False: "错误", "Not Given": "未提及" })[answer] || answer;
+    }
 
     function setStatus(element, text, mode = "") {
       element.textContent = text;
@@ -386,7 +552,7 @@
 
     function renderParagraphs(paragraphs, exam) {
       if (!Array.isArray(paragraphs) || paragraphs.length === 0) {
-        paragraphsContainer.innerHTML = '<p class="empty">No paragraph data returned.</p>';
+        paragraphsContainer.innerHTML = '<p class="empty">未获取到文章段落。</p>';
         return;
       }
 
@@ -397,7 +563,7 @@
         const label = String.fromCharCode(65 + index);
         return `
           <article class="paragraph">
-            ${showParagraphTags ? `<span class="paragraph-tag">Paragraph ${label}</span>` : ""}
+            ${showParagraphTags ? `<span class="paragraph-tag">段落 ${label}</span>` : ""}
             <p>${escapeHtml(paragraph)}</p>
           </article>
         `;
@@ -411,7 +577,7 @@
 
       return `
         <section class="question-section">
-          <h3 class="question-section-title">Multiple Choice</h3>
+          <h3 class="question-section-title">单项选择题</h3>
           ${items.map((item, index) => {
             const name = `mcq-${index + 1}`;
             const optionKeys = ["A", "B", "C", "D"];
@@ -444,7 +610,7 @@
 
       return `
         <section class="question-section">
-          <h3 class="question-section-title">True / False / Not Given</h3>
+          <h3 class="question-section-title">判断题（正确 / 错误 / 未提及）</h3>
           ${tfng.map((item, index) => {
             const name = `tfng-${index + 1}`;
             const options = ["True", "False", "Not Given"];
@@ -456,7 +622,7 @@
                   ${options.map((key) => `
                     <label class="option-item">
                       <input type="radio" name="${name}" value="${key}">
-                      <span>${escapeHtml(key)}</span>
+                      <span>${escapeHtml(displayAnswer(key))}</span>
                     </label>
                   `).join("")}
                 </div>
@@ -474,9 +640,9 @@
 
       return `
         <section class="question-section">
-          <h3 class="question-section-title">Banked Cloze</h3>
+          <h3 class="question-section-title">选词填空</h3>
           <section class="question-card">
-            <h3>${escapeHtml(data.instruction || "Choose the correct word from the word bank.")}</h3>
+            <h3>请从下列词库中选择合适的单词，填写到对应的空白处。</h3>
             <div class="option-list">
               ${(Array.isArray(data.word_bank) ? data.word_bank : []).map((word) => `
                 <div class="option-item"><span>${escapeHtml(word)}</span></div>
@@ -490,7 +656,7 @@
                 class="completion-input"
                 type="text"
                 name="completion-${index + 1}"
-                placeholder="Type your answer"
+                placeholder="请输入答案"
               >
             </section>
           `).join("")}
@@ -511,9 +677,9 @@
 
       return `
         <section class="question-section">
-          <h3 class="question-section-title">Paragraph Matching</h3>
+          <h3 class="question-section-title">段落匹配</h3>
           <section class="question-card">
-            <h3>${escapeHtml(data.instruction || "Match each paragraph with the best heading.")}</h3>
+            <h3>请根据文章内容，为每个段落选择最合适的标题或描述，并填写对应编号。</h3>
             <div class="option-list">
               ${headings.map((item) => `
                 <div class="option-item">
@@ -527,12 +693,12 @@
           </section>
           ${items.map((item, index) => `
             <section class="question-card" data-answer="${escapeHtml(item.answer ?? "")}">
-              <h3>${index + 1}. Paragraph ${escapeHtml(item.paragraph)}</h3>
+              <h3>${index + 1}. 段落 ${escapeHtml(item.paragraph)}</h3>
               <input
                 class="completion-input"
                 type="text"
                 name="matching-${index + 1}"
-                placeholder="Type heading key, for example i"
+                placeholder="请输入对应编号，例如 i"
               >
             </section>
           `).join("")}
@@ -544,46 +710,79 @@
       const questionType = questions?.question_type;
 
       if (questionType === "careful_reading") {
-        questionsContainer.innerHTML = renderCarefulReadingSection(questions.careful_reading) || '<p class="empty">No careful reading data returned.</p>';
+        questionsContainer.innerHTML = renderCarefulReadingSection(questions.careful_reading) || '<p class="empty">未获取到仔细阅读题目。</p>';
         return;
       }
       if (questionType === "tfng") {
-        questionsContainer.innerHTML = renderTfngSection(questions.tfng) || '<p class="empty">No TFNG data returned.</p>';
+        questionsContainer.innerHTML = renderTfngSection(questions.tfng) || '<p class="empty">未获取到判断题。</p>';
         return;
       }
       if (questionType === "banked_cloze") {
-        questionsContainer.innerHTML = renderBankedClozeSection(questions.banked_cloze) || '<p class="empty">No banked cloze data returned.</p>';
+        questionsContainer.innerHTML = renderBankedClozeSection(questions.banked_cloze) || '<p class="empty">未获取到选词填空题目。</p>';
         return;
       }
       if (questionType === "paragraph_matching") {
-        questionsContainer.innerHTML = renderParagraphMatchingSection(questions.paragraph_matching) || '<p class="empty">No paragraph matching data returned.</p>';
+        questionsContainer.innerHTML = renderParagraphMatchingSection(questions.paragraph_matching) || '<p class="empty">未获取到段落匹配题目。</p>';
         return;
       }
 
-      questionsContainer.innerHTML = '<p class="empty">No question data returned.</p>';
+      questionsContainer.innerHTML = '<p class="empty">未获取到题目。</p>';
     }
 
     async function loadContent() {
+      if (reloadButton.disabled) return;
+      if (wordsLoading || wordsError) {
+        document.getElementById("config-hint").textContent = wordsLoading ? "请等待词表读取完成。" : "请重新上传有效词表，或点击“使用默认词表”。";
+        return;
+      }
+      if (!(providerSelect.value === "ollama") && !apiKeyInput.value.trim()) {
+        document.getElementById("config-hint").textContent = "请先填写 API 密钥。";
+        apiKeyInput.focus();
+        return;
+      }
+      const selectedModel = modelSelect.value === "custom" ? modelInput.value.trim() : modelSelect.value;
+      if (!selectedModel) {
+        document.getElementById("config-hint").textContent = "请选择模型或手动填写模型名称。";
+        modelSelect.focus();
+        return;
+      }
+      const controller = new AbortController();
+      const startedAt = Date.now();
+      const waitTimer = setInterval(() => {
+        const seconds = Math.floor((Date.now() - startedAt) / 1000);
+        document.getElementById("config-hint").textContent = `正在等待文章和题目生成，已等待 ${seconds} 秒。${seconds >= 60 ? "模型响应较慢，超时后会自动恢复操作。" : "请不要重复提交。"}`;
+      }, 1000);
+      const timeoutTimer = setTimeout(() => controller.abort(), 270000);
+      const requestKey = providerSelect.value === "ollama" ? "" : apiKeyInput.value.trim();
+      reloadButton.disabled = true;
+      document.getElementById("setup-fields").disabled = true;
+      document.getElementById("config-hint").textContent = "正在生成文章和题目，请稍候；完成后将进入答题页……";
       const exam = examSelect.value;
       const questionType = questionTypeSelect.value;
-      pageTitle.textContent = "Loading passage...";
-      paragraphsContainer.innerHTML = '<p class="empty">Loading article...</p>';
-      questionsContainer.innerHTML = '<p class="empty">Loading questions...</p>';
-      answerSummary.textContent = "Loading a new question set...";
-      setStatus(articleStatus, `Loading article for ${exam}...`);
-      setStatus(questionStatus, `Loading ${questionType} for ${exam}...`);
+      pageTitle.textContent = "正在生成文章……";
+      paragraphsContainer.innerHTML = '<p class="empty">正在生成文章……</p>';
+      questionsContainer.innerHTML = '<p class="empty">正在生成题目……</p>';
+      answerSummary.textContent = "正在生成新练习，请稍候……";
+      setStatus(articleStatus, `正在生成${examSelect.selectedOptions[0].textContent}文章……`);
+      setStatus(questionStatus, `正在生成${questionTypeLabels[questionType]}题目……`);
 
       try {
         const res = await fetch(
-          `/generate?exam=${encodeURIComponent(exam)}&question_type=${encodeURIComponent(questionType)}`
+          "/generate", {
+            method: "POST",
+            signal: controller.signal,
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ exam, question_type: questionType, provider: providerSelect.value,
+              api_key: requestKey, model: selectedModel, words: uploadedWords }),
+          }
         );
         if (!res.ok) {
-          const text = await res.text();
-          throw new Error(text || `HTTP ${res.status}`);
+          const error = await res.json().catch(() => ({}));
+          throw new Error(typeof error.detail === "string" ? error.detail : `请求失败（HTTP ${res.status}）`);
         }
 
         const data = await res.json();
-        pageTitle.textContent = data.title || "Untitled Passage";
+        pageTitle.textContent = data.title || "未命名文章";
         renderParagraphs(data.paragraphs, exam);
         renderQuestions(data.questions);
         questionForm.reset();
@@ -600,78 +799,37 @@
         setStatus(
           articleStatus,
           isFallback
-            ? `Loaded ${articleCount} paragraph(s) from fallback content.`
-            : `Loaded ${articleCount} paragraph(s).`,
+            ? `已加载本地示例文章，共 ${articleCount} 段。`
+            : `文章生成完成，共 ${articleCount} 段。`,
           isFallback ? "warning" : "success"
         );
         setStatus(
           questionStatus,
           isFallback
-            ? `Loaded ${questionCount} ${resolvedType} item(s) from fallback content.`
-            : `Loaded ${questionCount} ${resolvedType} item(s).`,
+            ? `已加载本地示例：${questionTypeLabels[resolvedType] || "练习"}，共 ${questionCount} 题。`
+            : `${questionTypeLabels[resolvedType] || "练习"}生成完成，共 ${questionCount} 题。`,
           isFallback ? "warning" : "success"
         );
-        answerSummary.textContent = data.message
-          || "Content loaded successfully. You can now answer the questions on the right.";
+        answerSummary.textContent = isFallback
+          ? "模型请求受到限流，当前显示本地示例内容。你可以稍后重新生成。"
+          : "练习已生成，可以开始答题了。";
+        document.getElementById("practice-settings").textContent = `${examSelect.selectedOptions[0].textContent} · ${questionTypeLabels[questionType]} · ${selectedModel}`;
+        document.getElementById("config-hint").textContent = "练习已生成，可以调整配置后开始新练习。";
+        showPage(true);
       } catch (error) {
-        pageTitle.textContent = "Failed to load content";
-        paragraphsContainer.innerHTML = '<p class="empty">The article could not be loaded.</p>';
-        questionsContainer.innerHTML = '<p class="empty">The questions could not be loaded.</p>';
-        setStatus(articleStatus, `Load failed: ${error.message}`, "warning");
-        setStatus(questionStatus, `Load failed: ${error.message}`, "warning");
-        answerSummary.textContent = "The backend returned an error, so no dynamic content was rendered.";
-      }
-    }
-
-    // Set to false to generate practice with the configured model again.
-    const DEMO_MODE = false;
-
-    function loadDemoContent() {
-      examSelect.value = "CET4";
-      questionTypeSelect.value = "careful_reading";
-      examSelect.disabled = true;
-      questionTypeSelect.disabled = true;
-
-      pageTitle.textContent = "Demo: Alice's Morning";
-      renderParagraphs([
-        "Alice eats an apple every morning. She walks to school because she enjoys the fresh air."
-      ], "CET4");
-      renderQuestions({
-        question_type: "careful_reading",
-        careful_reading: [
-          {
-            question: "What does Alice eat every morning?",
-            options: {
-              A: "An apple",
-              B: "A banana",
-              C: "An orange",
-              D: "An egg"
-            },
-            answer: "A"
-          },
-          {
-            question: "Why does Alice walk to school?",
-            options: {
-              A: "Her bike is broken",
-              B: "She enjoys the fresh air",
-              C: "The bus is expensive",
-              D: "Her school is far away"
-            },
-            answer: "B"
-          }
-        ]
-      });
-      questionForm.reset();
-      setStatus(articleStatus, "Demo passage loaded. No model connection needed.", "success");
-      setStatus(questionStatus, "2 demo questions loaded.", "success");
-      answerSummary.textContent = "Demo mode: choose your answers, then click Check Answers.";
-    }
-
-    function loadPractice() {
-      if (DEMO_MODE) {
-        loadDemoContent();
-      } else {
-        loadContent();
+        if (error.name === "AbortError") error = new Error("等待超过 4 分 30 秒，已停止等待。服务端可能仍在处理，请稍后重试或切换模型。");
+        document.getElementById("config-hint").textContent = error.message;
+        pageTitle.textContent = "内容生成失败";
+        paragraphsContainer.innerHTML = '<p class="empty">文章生成失败，请稍后重试。</p>';
+        questionsContainer.innerHTML = '<p class="empty">题目生成失败，请稍后重试。</p>';
+        setStatus(articleStatus, `生成失败，错误详情：${error.message}`, "warning");
+        setStatus(questionStatus, `生成失败，错误详情：${error.message}`, "warning");
+        answerSummary.textContent = "生成服务返回错误。请检查后端是否启动、API 密钥是否正确以及账户额度是否充足。";
+      } finally {
+        clearInterval(waitTimer);
+        clearTimeout(timeoutTimer);
+        reloadButton.disabled = false;
+        document.getElementById("setup-fields").disabled = false;
       }
     }
 
@@ -689,7 +847,7 @@
       const cards = Array.from(questionsContainer.querySelectorAll("[data-answer]"));
       clearGrading();
       if (cards.length === 0) {
-        answerSummary.textContent = "There are no questions to check yet.";
+        answerSummary.textContent = "目前没有可检查的题目，请先生成练习。";
         return;
       }
 
@@ -704,21 +862,21 @@
         feedback.className = "answer-feedback status-box";
         if (!expected) {
           unavailableCount += 1;
-          setStatus(feedback, "No answer key available for this question.", "warning");
+          setStatus(feedback, "这道题暂时没有参考答案。", "warning");
         } else if (!answer) {
           unansweredCount += 1;
-          setStatus(feedback, "Unanswered.", "warning");
+          setStatus(feedback, "尚未作答。", "warning");
         } else if (answer === expected) {
           correctCount += 1;
-          setStatus(feedback, "Correct!", "success");
+          setStatus(feedback, "回答正确！", "success");
         } else {
-          setStatus(feedback, `Incorrect. Correct answer: ${card.dataset.answer.trim()}`, "warning");
+          setStatus(feedback, `回答错误。正确答案：${displayAnswer(card.dataset.answer.trim())}`, "warning");
         }
         card.appendChild(feedback);
       });
 
-      answerSummary.textContent = `${correctCount} / ${cards.length} correct. ${unansweredCount} unanswered.`
-        + (unavailableCount ? ` ${unavailableCount} could not be graded.` : "");
+      answerSummary.textContent = `共 ${cards.length} 题，答对 ${correctCount} 题，未作答 ${unansweredCount} 题。`
+        + (unavailableCount ? `另有 ${unavailableCount} 题无法评分。` : "");
     }
 
     checkButton.addEventListener("click", checkAnswers);
@@ -728,23 +886,17 @@
     });
     questionForm.addEventListener("input", () => {
       clearGrading();
-      answerSummary.textContent = "Answers changed. Click Check Answers to grade again.";
+      answerSummary.textContent = "答案已修改，请点击“检查答案”重新评分。";
     });
     questionForm.addEventListener("reset", () => {
       clearGrading();
-      answerSummary.textContent = "Answers reset. Complete the questions and click Check Answers.";
+      answerSummary.textContent = "答案已清空。完成题目后，点击“检查答案”。";
     });
 
-    reloadButton.addEventListener("click", loadPractice);
-    examSelect.addEventListener("change", () => {
-      if (examSelect.value === "CET4" || examSelect.value === "CET6") {
-        const allowed = new Set(["careful_reading", "banked_cloze", "paragraph_matching"]);
-        if (!allowed.has(questionTypeSelect.value)) {
-          questionTypeSelect.value = "careful_reading";
-        }
-      }
+    document.getElementById("setup-form").addEventListener("submit", event => {
+      event.preventDefault();
+      loadContent();
     });
-    loadPractice();
   </script>
 </body>
 </html>
